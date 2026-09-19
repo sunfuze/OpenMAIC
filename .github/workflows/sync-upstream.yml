@@ -32,7 +32,10 @@ jobs:
           git remote add upstream https://github.com/THU-MAIC/OpenMAIC.git
           git fetch --prune upstream main
 
-          if git diff --quiet HEAD upstream/main; then
+          # The fork intentionally contains workflow files that upstream does not.
+          # Compare ancestry rather than trees so those fork-only files do not
+          # trigger a rebuild every day when upstream has not changed.
+          if git merge-base --is-ancestor upstream/main HEAD; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "Fork is already up to date."
             exit 0
