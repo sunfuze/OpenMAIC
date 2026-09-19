@@ -1,0 +1,69 @@
+name: Build and publish OpenMAIC image
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "Dockerfile"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "app/**"
+      - "components/**"
+      - "configs/**"
+      - "lib/**"
+      - "packages/**"
+      - "public/**"
+      - "scripts/**"
+      - ".github/workflows/build-openmaic-image.yml"
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: openmaic-image-main
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v5
+
+      - name: Validate persistence build token
+        env:
+          PERSISTENCE_TOKEN: ${{ secrets.OPENMAIC_PERSISTENCE_TOKEN }}
+        run: test -n "$PERSISTENCE_TOKEN"
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push linux/amd64 image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/openmaic:latest
+            ghcr.io/${{ github.repository_owner }}/openmaic:${{ github.sha }}
+          build-args: |
+            ALPINE_MIRROR=mirrors.tuna.tsinghua.edu.cn
+            NPM_REGISTRY=https://registry.npmmirror.com
+            NEXT_TELEMETRY_DISABLED=1
+            NEXT_PUBLIC_PERSISTENCE=1
+            NEXT_PUBLIC_PERSISTENCE_TOKEN=${{ secrets.OPENMAIC_PERSISTENCE_TOKEN }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

@@ -1,0 +1,50 @@
+name: Sync upstream and build image
+
+on:
+  schedule:
+    - cron: "0 18 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout fork
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Sync THU-MAIC/OpenMAIC main
+        id: sync
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/THU-MAIC/OpenMAIC.git
+          git fetch --prune upstream main
+
+          if git diff --quiet HEAD upstream/main; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Fork is already up to date."
+            exit 0
+          fi
+
+          # Keep fork-only workflow files unless they overlap an upstream file.
+          git merge --no-edit -X theirs upstream/main
+          git push origin HEAD:main
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Trigger image build
+        if: steps.sync.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run build-openmaic-image.yml --repo "$GITHUB_REPOSITORY" --ref main
